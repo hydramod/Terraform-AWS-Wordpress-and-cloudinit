@@ -1,4 +1,4 @@
-# Terraform — WordPress on AWS with Cloud‑Init (Module-based)
+# Terraform: WordPress on AWS with Cloud‑Init and optional S3 backend bootstrap
 
 Provision a single EC2 instance running **WordPress** on **Ubuntu** using **Terraform** and **cloud‑init**.  
 State is stored remotely in **S3** (optional bootstrap included).
