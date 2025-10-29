@@ -110,6 +110,13 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Set TF_VAR inputs
+        run: |
+          echo "TF_VAR_key_name=${{ vars.TF_KEY_NAME }}"            >> $GITHUB_ENV
+          echo "TF_VAR_db_name=${{ vars.TF_DB_NAME }}"              >> $GITHUB_ENV
+          echo "TF_VAR_db_user=${{ vars.TF_DB_USER }}"              >> $GITHUB_ENV
+          echo "TF_VAR_db_password=${{ secrets.TF_DB_PASSWORD }}"   >> $GITHUB_ENV
+
       - name: Terraform init (smart backend)
         working-directory: ${{ matrix.workdir }}
         shell: bash
@@ -141,10 +148,4 @@ jobs:
 
       - name: Terraform plan
         working-directory: ${{ matrix.workdir }}
-        shell: bash
-        run: |
-          EXTRA_ARGS=""
-          if [ -f "terraform.tfvars" ]; then
-            EXTRA_ARGS="-var-file=terraform.tfvars"
-          fi
-          terraform plan -no-color -lock=false $EXTRA_ARGS
+        run: terraform plan -no-color -lock=false
