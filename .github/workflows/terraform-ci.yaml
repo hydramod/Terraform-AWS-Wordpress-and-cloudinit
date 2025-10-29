@@ -31,6 +31,7 @@ jobs:
         workdir: [ ".", "bootstrap" ]
     permissions:
       contents: read
+      security-events: write
 
     steps:
       - name: Checkout
@@ -53,17 +54,23 @@ jobs:
         working-directory: ${{ matrix.workdir }}
         run: terraform validate -no-color
 
-      - name: TFLint
-        uses: terraform-linters/tflint-action@v5
-        with:
-          args: -f compact
-          working_directory: ${{ matrix.workdir }}
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
 
-      - name: tfsec
-        uses: aquasecurity/tfsec-action@v1
+      - name: TFLint
+        working-directory: ${{ matrix.workdir }}
+        run: tflint -f compact
+
+      - name: tfsec (Action)
+        uses: tfsec/tfsec-sarif-action@v0.1.4
         with:
           working_directory: ${{ matrix.workdir }}
-          soft_fail: true
+          sarif_file: tfsec.sarif
+
+      - name: Upload SARIF to Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: tfsec.sarif
 
   plan:
     runs-on: ubuntu-latest
@@ -97,6 +104,7 @@ jobs:
 
       - name: Terraform plan
         working-directory: ${{ matrix.workdir }}
+        shell: bash
         run: |
           EXTRA_ARGS=""
           if [ -f "terraform.tfvars" ]; then
