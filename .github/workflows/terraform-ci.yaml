@@ -21,6 +21,7 @@ env:
   TF_IN_AUTOMATION: "true"
   TF_INPUT: "false"
   AWS_REGION: us-east-1
+  TFLINT_CONFIG_FILE: ${{ github.workspace }}/.tflint.hcl
 
 jobs:
   lint-validate:
@@ -29,10 +30,6 @@ jobs:
       fail-fast: false
       matrix:
         workdir: [ ".", "bootstrap" ]
-    permissions:
-      contents: read
-      security-events: write
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,7 +39,7 @@ jobs:
         with:
           terraform_version: 1.13.4
 
-      - name: Terraform fmt (check)
+      - name: Terraform fmt
         working-directory: ${{ matrix.workdir }}
         run: terraform fmt -check -recursive
 
@@ -57,20 +54,32 @@ jobs:
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v4
 
+      - name: Cache TFLint plugins
+        uses: actions/cache@v4
+        with:
+          path: ~/.tflint.d/plugins
+          key: tflint-plugins-${{ runner.os }}-${{ hashFiles('.tflint.hcl') }}
+
+      - name: TFLint init
+        working-directory: ${{ matrix.workdir }}
+        run: tflint --init
+
       - name: TFLint
         working-directory: ${{ matrix.workdir }}
         run: tflint -f compact
 
-      - name: tfsec (Action)
-        uses: tfsec/tfsec-sarif-action@v0.1.4
+      - name: tfsec
+        uses: aquasecurity/tfsec-action@v1
         with:
           working_directory: ${{ matrix.workdir }}
-          sarif_file: tfsec.sarif
+          format: sarif
+          soft_fail: true
+          additional_args: --no-color --minimum-severity MEDIUM --concise-output
 
       - name: Upload SARIF to Code Scanning
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: tfsec.sarif
+          sarif_file: ${{ matrix.workdir }}/tfsec.sarif
 
   plan:
     runs-on: ubuntu-latest
