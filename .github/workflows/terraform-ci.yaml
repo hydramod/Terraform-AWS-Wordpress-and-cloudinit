@@ -134,7 +134,11 @@ jobs:
               -backend-config="region=${{ env.AWS_REGION }}"
           else
             echo "Bucket missing or not accessible. Using local backend."
-            terraform init -backend=false -reconfigure
+            terraform init -reconfigure -backend=false
+            terraform init -reconfigure \
+              -backend-config="bucket=" \
+              -backend-config="key=" \
+              -backend-config="region="
           fi
 
       - name: Terraform plan
