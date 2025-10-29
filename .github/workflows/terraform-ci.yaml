@@ -69,7 +69,7 @@ jobs:
         run: tflint -f compact
 
       - name: tfsec
-        uses: aquasecurity/tfsec-action@v1
+        uses: tfsec/tfsec-sarif-action@v0.1.4
         with:
           working_directory: ${{ matrix.workdir }}
           format: sarif
