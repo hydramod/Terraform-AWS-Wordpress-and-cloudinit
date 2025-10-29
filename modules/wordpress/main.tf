@@ -1,13 +1,13 @@
 resource "aws_instance" "wordpress" {
-  ami                     = var.ami_id
-  instance_type           = var.instance_type
-  key_name                = var.key_name
-  vpc_security_group_ids  = [aws_security_group.wp_sg.id]
-  subnet_id               = var.subnet_id
-  user_data               = templatefile("${path.module}/cloud-init.yaml", {
-    db_name               = var.db_name
-    db_user               = var.db_user
-    db_password           = var.db_password
+  ami                    = var.ami_id
+  instance_type          = var.instance_type
+  key_name               = var.key_name
+  vpc_security_group_ids = [aws_security_group.wp_sg.id]
+  subnet_id              = var.subnet_id
+  user_data = templatefile("${path.module}/cloud-init.yaml", {
+    db_name     = var.db_name
+    db_user     = var.db_user
+    db_password = var.db_password
   })
 
   user_data_replace_on_change = true
