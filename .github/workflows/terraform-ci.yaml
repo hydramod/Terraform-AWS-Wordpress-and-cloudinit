@@ -30,6 +30,10 @@ jobs:
       fail-fast: false
       matrix:
         workdir: [ ".", "bootstrap" ]
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -69,17 +73,16 @@ jobs:
         run: tflint -f compact
 
       - name: tfsec
-        uses: tfsec/tfsec-sarif-action@v0.1.4
+        uses: aquasecurity/tfsec-sarif-action@v0.1.4
         with:
           working_directory: ${{ matrix.workdir }}
-          format: sarif
-          soft_fail: true
-          additional_args: --no-color --minimum-severity MEDIUM --concise-output
+          sarif_file: tfsec.sarif
 
       - name: Upload SARIF to Code Scanning
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: ${{ matrix.workdir }}/tfsec.sarif
+          sarif_file: tfsec.sarif
+          category: tfsec-${{ matrix.workdir }}
 
   plan:
     runs-on: ubuntu-latest
