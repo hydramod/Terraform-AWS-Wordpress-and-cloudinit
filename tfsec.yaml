@@ -1,0 +1,2 @@
+severity_overrides:
+  aws-iam-no-policy-wildcards: HIGH
