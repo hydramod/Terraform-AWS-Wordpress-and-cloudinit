@@ -185,6 +185,39 @@ If you used resource targeting during debugging, run a normal plan/apply/destroy
 
 ---
 
+## CI pipeline (GitHub Actions)
+
+* **Workflow:** `.github/workflows/terraform-ci.yaml`
+
+* **Triggers:** PRs and pushes to `main` that touch `*.tf`, `*.tfvars`, `.tflint.hcl`, or `.tfsec.yml`
+
+* **Jobs:**
+
+  * **`lint-validate`** (runs for `.` and `bootstrap`)
+
+    * `terraform fmt -check -recursive`
+    * `terraform init -backend=false` (no remote state needed for validation)
+    * `terraform validate`
+    * **TFLint:** sets up TFLint, caches plugins, runs `tflint`
+    * **tfsec:** runs the tfsec SARIF action and uploads results to Code Scanning
+
+  * **`plan`** (runs for `.` and `bootstrap`)
+
+    * Configures AWS credentials from repo secrets (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`)
+    * **Smart init:** checks if the S3 bucket exists; if yes, initializes the S3 backend; otherwise uses local (`terraform init -backend=false`)
+    * Runs `terraform plan`, optionally with `-var-file=terraform.tfvars` if present
+    * If you later enable the S3 backend in code, the workflow uses `terraform init -reconfigure` to adopt the remote backend; reconfigure is required whenever backend settings change
+
+* **Required GitHub Actions secrets:**
+
+  * `AWS_ACCESS_KEY_ID`
+  * `AWS_SECRET_ACCESS_KEY`
+
+* **Optional (variables via env/secrets):**
+
+  * `TF_VAR_key_name`, `TF_VAR_db_name`, `TF_VAR_db_user`, `TF_VAR_db_password`
+    Terraform will use any `TF_VAR_*` environment variables as input variables.
+
 ## Troubleshooting
 
 ### 1) Public IP but no site
@@ -255,6 +288,132 @@ Bucket names are **global**; choose a unique one.
   sudo mysql -e "SELECT User, Host FROM mysql.user;"
   ```
 - Recreate `wp-config.php` or update credentials as needed.
+
+Note: Below steps are troubleshooting that occured during implenentation of the CI
+
+### 8) `terraform fmt -check` fails (exit code 3)
+
+This means some files aren’t formatted. Fix locally, commit, and push:
+
+```bash
+terraform fmt -recursive
+git add -A && git commit -m "fmt: normalize Terraform formatting"
+```
+
+In CI we keep `-check` so it fails when files drift from canonical formatting.
+
+### 9) TFLint: `Failed to initialize plugins; Plugin "aws" not found. Did you run "tflint --init"?`
+
+Add a plugin init step and (optionally) cache TFLint plugins:
+
+```yaml
+- uses: terraform-linters/setup-tflint@v4
+- uses: actions/cache@v4
+  with:
+    path: ~/.tflint.d/plugins
+    key: tflint-plugins-${{ runner.os }}-${{ hashFiles('.tflint.hcl') }}
+- run: tflint --init
+```
+
+The `--init` step downloads the ruleset declared in `.tflint.hcl` (e.g., the AWS ruleset).
+
+### 10) TFLint v0.54+: `\"module\" attribute was removed… use \"call_module_type\" instead`
+
+Update your `.tflint.hcl` to the new schema (`call_module_type` replaces `module`). Example:
+
+```hcl
+config { call_module_type = "all" }  # instead of `module = true`
+```
+
+See the breaking-change note in the TFLint project.
+
+### 11) tfsec action cannot be resolved / version not found
+
+Use the maintained SARIF action and pin a valid version:
+
+```yaml
+- uses: aquasecurity/tfsec-sarif-action@v0.1.4
+  with:
+    working_directory: ${{ matrix.workdir }}
+    sarif_file: tfsec.sarif
+```
+
+This action runs tfsec and produces a SARIF file for upload.
+
+### 12) SARIF upload: `Resource not accessible by integration` or “missing token/permission”
+
+Ensure job/workflow permissions include:
+
+```yaml
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+```
+
+Then upload with:
+
+```yaml
+- uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: tfsec.sarif
+    category: tfsec-${{ matrix.workdir }}
+```
+
+GitHub requires proper permissions to accept SARIF uploads; missing `security-events: write` (and sometimes `actions: read`) will cause failures.
+
+### 13) SARIF path mismatch: `Path does not exist: bootstrap/tfsec.sarif`
+
+Set `sarif_file` relative to the repo root (or provide a full path) and be consistent with `working_directory`. For matrix builds:
+
+```yaml
+- uses: aquasecurity/tfsec-sarif-action@v0.1.4
+  with:
+    working_directory: ${{ matrix.workdir }}
+    sarif_file: ${{ matrix.workdir }}/tfsec.sarif
+
+- uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: ${{ matrix.workdir }}/tfsec.sarif
+```
+
+### 14) Backend S3 bucket missing (CI): fall back to local
+
+If the S3 bucket isn’t available, re-init with local backend; when you later enable S3, reconfigure the backend:
+
+```bash
+terraform init -reconfigure \
+  -backend-config="bucket=..." \
+  -backend-config="key=..." \
+  -backend-config="region=..."
+```
+
+Reconfiguration is required whenever backend settings change.
+
+### 15) `No value for required variable` (plan stage)
+
+Provide required input variables either via a checked-in `terraform.tfvars` (for non-secrets) or via environment variables (`TF_VAR_*`) in CI secrets:
+
+```yaml
+env:
+  TF_VAR_key_name: ${{ secrets.TF_VAR_key_name }}
+  TF_VAR_db_name: ${{ secrets.TF_VAR_db_name }}
+  TF_VAR_db_user: ${{ secrets.TF_VAR_db_user }}
+  TF_VAR_db_password: ${{ secrets.TF_VAR_db_password }}
+```
+
+Terraform automatically reads `TF_VAR_*` env vars and auto-loads any `*.auto.tfvars` files.
+
+### 16) Switching from S3 → local (or vice versa) mid-run
+
+If you toggled the backend (e.g., deleted the bucket or commented the block), run a fresh init with `-reconfigure` and clear the `.terraform/` dir to avoid stale state metadata:
+
+```bash
+rm -rf .terraform
+terraform init -reconfigure
+```
+
+Backend changes always require reinitialization.
 
 ---
 
