@@ -128,17 +128,15 @@ jobs:
           echo "Checking S3 bucket: $TF_BACKEND_BUCKET"
           if aws s3api head-bucket --bucket "$TF_BACKEND_BUCKET" >/dev/null 2>&1; then
             echo "Bucket exists. Using S3 backend."
+            echo 'terraform { backend "s3" {} }' > backend.ci.tf
             terraform init -reconfigure \
               -backend-config="bucket=$TF_BACKEND_BUCKET" \
               -backend-config="key=$KEY" \
               -backend-config="region=${{ env.AWS_REGION }}"
           else
             echo "Bucket missing or not accessible. Using local backend."
-            terraform init -reconfigure -backend=false
-            terraform init -reconfigure \
-              -backend-config="bucket=" \
-              -backend-config="key=" \
-              -backend-config="region="
+            rm -f backend.ci.tf
+            terraform init -backend=false -reconfigure
           fi
 
       - name: Terraform plan
