@@ -110,9 +110,31 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Terraform init
+      - name: Terraform init (smart backend)
         working-directory: ${{ matrix.workdir }}
-        run: terraform init
+        shell: bash
+        env:
+          TF_BACKEND_BUCKET: terraform-wp-ec2-alistechlab
+          TF_BACKEND_KEY_ROOT: root/terraform.tfstate
+          TF_BACKEND_KEY_BOOTSTRAP: bootstrap/terraform.tfstate
+        run: |
+          # Pick a key per workdir
+          KEY="$TF_BACKEND_KEY_ROOT"
+          if [ "${{ matrix.workdir }}" != "." ]; then
+            KEY="$TF_BACKEND_KEY_BOOTSTRAP"
+          fi
+
+          echo "Checking S3 bucket: $TF_BACKEND_BUCKET"
+          if aws s3api head-bucket --bucket "$TF_BACKEND_BUCKET" >/dev/null 2>&1; then
+            echo "Bucket exists. Using S3 backend."
+            terraform init -reconfigure \
+              -backend-config="bucket=$TF_BACKEND_BUCKET" \
+              -backend-config="key=$KEY" \
+              -backend-config="region=${{ env.AWS_REGION }}"
+          else
+            echo "Bucket missing or not accessible. Falling back to local backend."
+            terraform init -backend=false
+          fi
 
       - name: Terraform plan
         working-directory: ${{ matrix.workdir }}
